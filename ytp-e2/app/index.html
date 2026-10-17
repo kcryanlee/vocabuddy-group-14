@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#2563eb">
+  <link rel="manifest" href="manifest.json">
+  <title>VocaBuddy</title>
+  <style>
+    :root { color: #172033; background: #eff6ff; font-family: system-ui, sans-serif; }
+    body { margin: 0; padding: 24px 16px; }
+    main { max-width: 560px; margin: 0 auto; }
+    h1 { margin-bottom: 4px; color: #1d4ed8; }
+    .subtle, #message { color: #475569; }
+    .card { min-height: 220px; margin: 24px 0 12px; padding: 28px; border-radius: 16px; background: white; box-shadow: 0 12px 30px #bfdbfe; text-align: center; }
+    #word { margin: 28px 0 12px; font-size: clamp(2rem, 10vw, 3.5rem); }
+    #meaning { min-height: 32px; color: #1d4ed8; font-size: 1.4rem; }
+    #category { min-height: 22px; color: #1d4ed8; font-weight: 600; }
+    #example { min-height: 28px; color: #64748b; font-style: italic; }
+    .actions, .import-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    button { min-width: 110px; padding: 10px 16px; border: 0; border-radius: 8px; background: #2563eb; color: white; font: inherit; cursor: pointer; }
+    button.secondary { background: white; color: #1d4ed8; border: 1px solid #93c5fd; }
+    button.danger { background: #b91c1c; }
+    section { margin-top: 32px; padding: 20px; border-radius: 12px; background: white; }
+    textarea { box-sizing: border-box; width: 100%; min-height: 110px; margin: 12px 0; padding: 10px; border: 1px solid #94a3b8; border-radius: 8px; font: inherit; }
+    .error { color: #b91c1c; }
+    [hidden] { display: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>VocaBuddy</h1>
+    <p class="subtle">用間隔複習記住程式英文單字。</p>
+    <p id="stats" class="subtle"></p>
+
+    <article class="card">
+      <p id="word">載入中</p>
+      <p id="meaning">&nbsp;</p>
+      <p id="category">&nbsp;</p>
+      <p id="example">&nbsp;</p>
+      <div class="actions">
+        <button id="reveal">顯示答案</button>
+        <button id="again" class="danger" hidden>還要複習</button>
+        <button id="remembered" hidden>記住了</button>
+      </div>
+    </article>
+
+    <section>
+      <h2>快速測驗</h2>
+      <p id="quiz-question" class="subtle">按下按鈕開始。</p>
+      <div id="quiz-options" class="actions"></div>
+      <button id="new-quiz" class="secondary">出一題</button>
+      <p id="quiz-result" aria-live="polite"></p>
+    </section>
+
+    <section>
+      <button id="toggle-import" class="secondary">匯入 CSV 單字</button>
+      <button id="export" class="secondary">匯出所有單字</button>
+      <div id="import-panel" hidden>
+        <p class="subtle">每列格式：<code>en,zh,category</code>。分類欄可省略，第一列可放標題。</p>
+        <textarea id="csv-input" placeholder="en,zh,category&#10;binary search,二分搜尋,演算法"></textarea>
+        <div class="import-actions">
+          <button id="import">匯入</button>
+          <button id="clear-custom" class="danger">清除自行匯入的單字</button>
+        </div>
+        <p id="message" aria-live="polite"></p>
+      </div>
+    </section>
+  </main>
+
+  <script src="words.js"></script>
+  <script src="srs.js"></script>
+  <script src="csv.js"></script>
+  <script>
+    const LOG_KEY = "vocabuddy-review-log";
+    const CUSTOM_WORDS_KEY = "vocabuddy-custom-words";
+    const byId = (id) => document.getElementById(id);
+    const today = () => Math.floor(Date.now() / 86400000);
+
+    function readJson(key, fallback) {
+      try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch { return fallback; }
+    }
+
+    function writeJson(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+
+    const reviewLog = readJson(LOG_KEY, {});
+    const words = DEFAULT_WORDS.concat(readJson(CUSTOM_WORDS_KEY, []));
+
+    function reviewState(word) {
+      if (!reviewLog[word.en]) reviewLog[word.en] = { box: 1, due: today(), seen: 0 };
+      return reviewLog[word.en];
+    }
+
+    let queue = words.filter((word) => reviewState(word).due <= today());
+    let current = null;
+
+    function render() {
+      byId("stats").textContent = `今天待複習：${queue.length} / 共 ${words.length} 個單字`;
+      byId("meaning").textContent = "";
+      byId("category").textContent = "";
+      byId("example").textContent = "";
+      byId("reveal").hidden = false;
+      byId("again").hidden = true;
+      byId("remembered").hidden = true;
+
+      if (!queue.length) {
+        current = null;
+        byId("word").textContent = "今天完成了";
+        byId("reveal").hidden = true;
+        return;
+      }
+
+      current = queue[0];
+      byId("word").textContent = current.en;
+    }
+
+    byId("reveal").addEventListener("click", () => {
+      byId("meaning").textContent = current.zh;
+      byId("category").textContent = `分類：${current.category || "未分類"}`;
+      byId("example").textContent = current.example;
+      byId("reveal").hidden = true;
+      byId("again").hidden = false;
+      byId("remembered").hidden = false;
+    });
+
+    function mark(remembered) {
+      const state = reviewState(current);
+      const next = scheduleReview(state.box, remembered, today());
+      Object.assign(state, next, { seen: state.seen + 1 });
+      writeJson(LOG_KEY, reviewLog);
+      queue.shift();
+      if (!remembered) queue.push(current);
+      render();
+    }
+
+    byId("again").addEventListener("click", () => mark(false));
+    byId("remembered").addEventListener("click", () => mark(true));
+    byId("toggle-import").addEventListener("click", () => byId("import-panel").toggleAttribute("hidden"));
+
+    function shuffled(values) {
+      return values.slice().sort(() => Math.random() - 0.5);
+    }
+
+    function showQuiz() {
+      const answer = words[Math.floor(Math.random() * words.length)];
+      const distractors = shuffled(words.filter((word) => word.zh !== answer.zh)).slice(0, 3);
+      const options = shuffled([answer, ...distractors]);
+      byId("quiz-question").textContent = `「${answer.en}」的中文是？`;
+      byId("quiz-result").textContent = "";
+      const optionBox = byId("quiz-options");
+      optionBox.textContent = "";
+      for (const option of options) {
+        const button = document.createElement("button");
+        button.textContent = option.zh;
+        button.addEventListener("click", () => {
+          byId("quiz-result").textContent = option === answer ? "答對了。" : `答錯了，答案是「${answer.zh}」。`;
+        });
+        optionBox.appendChild(button);
+      }
+    }
+
+    byId("new-quiz").addEventListener("click", showQuiz);
+
+    function escapeCsv(value) {
+      const text = String(value || "");
+      return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    }
+
+    byId("export").addEventListener("click", () => {
+      const csv = ["English,Chinese,Category", ...words.map((word) => [word.en, word.zh, word.category || "未分類"].map(escapeCsv).join(","))].join("\n");
+      const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "vocabuddy-words.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    });
+
+    byId("import").addEventListener("click", () => {
+      const result = validateWords(parseCsv(byId("csv-input").value), words);
+      const message = byId("message");
+      message.className = result.errors.length ? "error" : "";
+      message.textContent = `新增 ${result.words.length} 個單字。${result.errors.map((error) => `第 ${error.line} 列：${error.reason}`).join("；")}`;
+      if (!result.words.length) return;
+
+      const customWords = readJson(CUSTOM_WORDS_KEY, []).concat(result.words);
+      writeJson(CUSTOM_WORDS_KEY, customWords);
+      location.reload();
+    });
+
+    byId("clear-custom").addEventListener("click", () => {
+      if (!confirm("確定清除所有自行匯入的單字嗎？")) return;
+      localStorage.removeItem(CUSTOM_WORDS_KEY);
+      location.reload();
+    });
+
+    if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js");
+    render();
+  </script>
+</body>
+</html>

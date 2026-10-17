@@ -53,6 +53,29 @@ VocaBuddy 是一個以 Python 開發的簡易英文單字學習程式，提供�
 
 [VocaBuddy.ipynb](https://colab.research.google.com/github/kcryanlee/vocabuddy-group-14/blob/main/VocaBuddy.ipynb)
 
+## E2 網頁版
+
+`ytp-e2/app/` 是可在瀏覽器使用的單字卡版本，提供：
+
+- 間隔複習：答對後延長下次複習時間，答錯則立即回到複習佇列。
+- CSV 匯入與匯出：支援 `en,zh,category` 格式；分類欄可省略。自行匯入的單字會保存在瀏覽器本機。
+- 快速測驗：從目前單字庫產生四選一中文題目。
+- 離線使用：以 Service Worker 快取頁面與核心資源。
+
+先確認 Node.js 可用，再執行核心邏輯測試：
+
+```text
+node ytp-e2/app/test.js
+```
+
+要在瀏覽器開啟，請從 `ytp-e2/app/` 啟動本機伺服器：
+
+```text
+python -m http.server 8000
+```
+
+接著開啟 `http://localhost:8000`。不要直接雙擊 `index.html`，因為 Service Worker 需要 localhost 或 HTTPS。
+
 ## 專案結構
 ```
 vocabuddy-group-14/
