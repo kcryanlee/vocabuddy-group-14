@@ -137,6 +137,16 @@
     byId("remembered").addEventListener("click", () => mark(true));
     byId("toggle-import").addEventListener("click", () => byId("import-panel").toggleAttribute("hidden"));
 
+    // 用途：回傳隨機打亂順序的新陣列，不改動傳入的陣列。
+    function shuffleWords(list) {
+      const shuffled = list.slice();
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      return shuffled;
+    }
+
     function shuffled(values) {
       return values.slice().sort(() => Math.random() - 0.5);
     }
